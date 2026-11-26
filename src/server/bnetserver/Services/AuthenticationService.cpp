@@ -237,11 +237,40 @@ uint32 Authentication::HandleLogon(authentication::v1::LogonRequest const* reque
         if (request->has_cached_web_credentials())
             return HandleVerifyWebCredentials(request->cached_web_credentials(), continuation);
 
-        challenge::v1::ChallengeExternalRequest externalChallenge;
-        externalChallenge.set_payload_type("web_auth_url");
-        externalChallenge.set_payload(Trinity::StringFormat("http{}://{}:{}/bnetserver/login/", !SslContext::UsesDevWildcardCertificate() ? "s" : "",
-            sLoginService.GetHostnameForClient(_session->GetRemoteIpAddress()), sLoginService.GetPort()));
-        Service<challenge::v1::ChallengeListener>(_session).OnExternalChallenge(&externalChallenge);
+        std::string webAuthUrl = Trinity::StringFormat("http{}://{}:{}/bnetserver/login/", !SslContext::UsesDevWildcardCertificate() ? "s" : "",
+            sLoginService.GetHostnameForClient(_session->GetRemoteIpAddress()), sLoginService.GetPort());
+
+        LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET);
+        stmt->setString(0, _session->GetRemoteIpAddress().to_string());
+        _session->QueueQuery(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback([session = _session, webAuthUrl = std::move(webAuthUrl), continuation = std::move(continuation)](PreparedQueryResult ticketResult) mutable
+        {
+            if (ticketResult)
+            {
+                std::string rawTicket = (*ticketResult)[0].GetString();
+                if (rawTicket.starts_with("NG-"))
+                {
+                    std::string consumedTicket = "TC-" + rawTicket.substr(3);
+                    LoginDatabasePreparedStatement* updStmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET);
+                    updStmt->setString(0, consumedTicket);
+                    updStmt->setString(1, rawTicket);
+                    session->QueueQuery(LoginDatabase.AsyncQuery(updStmt).WithPreparedCallback([session, consumedTicket = std::move(consumedTicket), continuation = std::move(continuation)](PreparedQueryResult) mutable
+                    {
+                        Authentication authService(session);
+                        authService.HandleVerifyWebCredentials(consumedTicket, continuation);
+                    }));
+                    return;
+                }
+            }
+
+            challenge::v1::ChallengeExternalRequest externalChallenge;
+            externalChallenge.set_payload_type("web_auth_url");
+            externalChallenge.set_payload(webAuthUrl);
+            Service<challenge::v1::ChallengeListener>(session).OnExternalChallenge(&externalChallenge);
+
+            Authentication asyncContinuationService(session);
+            NoData response;
+            continuation(&asyncContinuationService, ERROR_OK, &response);
+        }));
     }
 
     return result;
@@ -331,11 +360,40 @@ uint32 Authentication::HandleLogon(authentication::v2::client::LogonRequest cons
         if (!cachedAuthToken.empty())
             return HandleVerifyAuthToken(cachedAuthToken, continuation);
 
-        authentication::v2::client::ExternalChallengeNotification externalChallenge;
-        externalChallenge.set_payload_type("web_auth_url");
-        externalChallenge.set_payload(Trinity::StringFormat("http{}://{}:{}/bnetserver/login/", !SslContext::UsesDevWildcardCertificate() ? "s" : "",
-            sLoginService.GetHostnameForClient(_session->GetRemoteIpAddress()), sLoginService.GetPort()));
-        Service<authentication::v2::client::AuthenticationListener>(_session).OnExternalChallenge(&externalChallenge);
+        std::string webAuthUrl = Trinity::StringFormat("http{}://{}:{}/bnetserver/login/", !SslContext::UsesDevWildcardCertificate() ? "s" : "",
+            sLoginService.GetHostnameForClient(_session->GetRemoteIpAddress()), sLoginService.GetPort());
+
+        LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET);
+        stmt->setString(0, _session->GetRemoteIpAddress().to_string());
+        _session->QueueQuery(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback([session = _session, webAuthUrl = std::move(webAuthUrl), continuation = std::move(continuation)](PreparedQueryResult ticketResult) mutable
+        {
+            if (ticketResult)
+            {
+                std::string rawTicket = (*ticketResult)[0].GetString();
+                if (rawTicket.starts_with("NG-"))
+                {
+                    std::string consumedTicket = "TC-" + rawTicket.substr(3);
+                    LoginDatabasePreparedStatement* updStmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET);
+                    updStmt->setString(0, consumedTicket);
+                    updStmt->setString(1, rawTicket);
+                    session->QueueQuery(LoginDatabase.AsyncQuery(updStmt).WithPreparedCallback([session, consumedTicket = std::move(consumedTicket), continuation = std::move(continuation)](PreparedQueryResult) mutable
+                    {
+                        Authentication authService(session);
+                        authService.HandleVerifyAuthToken(consumedTicket, continuation);
+                    }));
+                    return;
+                }
+            }
+
+            authentication::v2::client::ExternalChallengeNotification externalChallenge;
+            externalChallenge.set_payload_type("web_auth_url");
+            externalChallenge.set_payload(webAuthUrl);
+            Service<authentication::v2::client::AuthenticationListener>(session).OnExternalChallenge(&externalChallenge);
+
+            Authentication asyncContinuationService(session);
+            NoData response;
+            continuation(&asyncContinuationService, ERROR_OK, &response);
+        }));
     }
 
     return result;
