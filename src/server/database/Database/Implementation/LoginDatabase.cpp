@@ -125,7 +125,7 @@ void LoginDatabaseConnection::DoPrepareStatements()
     PrepareStatement(LOGIN_SEL_BNET_EXISTING_AUTHENTICATION, "SELECT LoginTicketExpiry FROM battlenet_accounts WHERE LoginTicket = ?", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_SEL_BNET_EXISTING_AUTHENTICATION_BY_ID, "SELECT LoginTicket FROM battlenet_accounts WHERE id = ?", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_UPD_BNET_EXISTING_AUTHENTICATION, "UPDATE battlenet_accounts SET LoginTicketExpiry = ? WHERE LoginTicket = ?", CONNECTION_ASYNC);
-    PrepareStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET, "SELECT LoginTicket FROM battlenet_accounts WHERE last_ip = ? AND LoginTicket LIKE 'NG-%' AND LoginTicketExpiry >= UNIX_TIMESTAMP() ORDER BY LoginTicketExpiry DESC LIMIT 1", CONNECTION_ASYNC);
+    PrepareStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET, "SELECT LoginTicket FROM battlenet_accounts WHERE LoginTicket LIKE 'NG-%' AND LoginTicketExpiry >= UNIX_TIMESTAMP() AND (last_ip = ? OR last_ip LIKE '172.%') ORDER BY (last_ip = ?) DESC, LoginTicketExpiry DESC LIMIT 1", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET, "UPDATE battlenet_accounts SET LoginTicket = ? WHERE LoginTicket = ?", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_SEL_BNET_ACCOUNT_INFO, "SELECT " BnetAccountInfo ", " BnetGameAccountInfo ""
         " FROM battlenet_accounts ba LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id LEFT JOIN account a ON ba.id = a.battlenet_account"

@@ -237,18 +237,21 @@ uint32 Authentication::HandleLogon(authentication::v1::LogonRequest const* reque
         if (request->has_cached_web_credentials())
             return HandleVerifyWebCredentials(request->cached_web_credentials(), continuation);
 
+        std::string remoteIp = _session->GetRemoteIpAddress().to_string();
         std::string webAuthUrl = Trinity::StringFormat("http{}://{}:{}/bnetserver/login/", !SslContext::UsesDevWildcardCertificate() ? "s" : "",
             sLoginService.GetHostnameForClient(_session->GetRemoteIpAddress()), sLoginService.GetPort());
 
         LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET);
-        stmt->setString(0, _session->GetRemoteIpAddress().to_string());
-        _session->QueueQuery(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback([session = _session, webAuthUrl = std::move(webAuthUrl), continuation = std::move(continuation)](PreparedQueryResult ticketResult) mutable
+        stmt->setString(0, remoteIp);
+        stmt->setString(1, remoteIp);
+        _session->QueueQuery(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback([session = _session, remoteIp = std::move(remoteIp), webAuthUrl = std::move(webAuthUrl), continuation = std::move(continuation)](PreparedQueryResult ticketResult) mutable
         {
             if (ticketResult)
             {
                 std::string rawTicket = (*ticketResult)[0].GetString();
                 if (rawTicket.starts_with("NG-"))
                 {
+                    TC_LOG_INFO("server.bnetserver", "Auto-authenticating session from {} using launcher SSO ticket", remoteIp);
                     std::string consumedTicket = "TC-" + rawTicket.substr(3);
                     LoginDatabasePreparedStatement* updStmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET);
                     updStmt->setString(0, consumedTicket);
@@ -360,18 +363,21 @@ uint32 Authentication::HandleLogon(authentication::v2::client::LogonRequest cons
         if (!cachedAuthToken.empty())
             return HandleVerifyAuthToken(cachedAuthToken, continuation);
 
+        std::string remoteIp = _session->GetRemoteIpAddress().to_string();
         std::string webAuthUrl = Trinity::StringFormat("http{}://{}:{}/bnetserver/login/", !SslContext::UsesDevWildcardCertificate() ? "s" : "",
             sLoginService.GetHostnameForClient(_session->GetRemoteIpAddress()), sLoginService.GetPort());
 
         LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET);
-        stmt->setString(0, _session->GetRemoteIpAddress().to_string());
-        _session->QueueQuery(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback([session = _session, webAuthUrl = std::move(webAuthUrl), continuation = std::move(continuation)](PreparedQueryResult ticketResult) mutable
+        stmt->setString(0, remoteIp);
+        stmt->setString(1, remoteIp);
+        _session->QueueQuery(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback([session = _session, remoteIp = std::move(remoteIp), webAuthUrl = std::move(webAuthUrl), continuation = std::move(continuation)](PreparedQueryResult ticketResult) mutable
         {
             if (ticketResult)
             {
                 std::string rawTicket = (*ticketResult)[0].GetString();
                 if (rawTicket.starts_with("NG-"))
                 {
+                    TC_LOG_INFO("server.bnetserver", "Auto-authenticating session from {} using launcher SSO ticket", remoteIp);
                     std::string consumedTicket = "TC-" + rawTicket.substr(3);
                     LoginDatabasePreparedStatement* updStmt = LoginDatabase.GetPreparedStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET);
                     updStmt->setString(0, consumedTicket);
