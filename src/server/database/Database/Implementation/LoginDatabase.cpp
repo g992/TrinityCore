@@ -125,8 +125,13 @@ void LoginDatabaseConnection::DoPrepareStatements()
     PrepareStatement(LOGIN_SEL_BNET_EXISTING_AUTHENTICATION, "SELECT LoginTicketExpiry FROM battlenet_accounts WHERE LoginTicket = ?", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_SEL_BNET_EXISTING_AUTHENTICATION_BY_ID, "SELECT LoginTicket FROM battlenet_accounts WHERE id = ?", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_UPD_BNET_EXISTING_AUTHENTICATION, "UPDATE battlenet_accounts SET LoginTicketExpiry = ? WHERE LoginTicket = ?", CONNECTION_ASYNC);
-    PrepareStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET, "SELECT LoginTicket FROM battlenet_accounts WHERE LoginTicket LIKE 'NG-%' AND LoginTicketExpiry >= UNIX_TIMESTAMP() AND (last_ip = ? OR last_ip LIKE '172.%') ORDER BY (last_ip = ?) DESC, LoginTicketExpiry DESC LIMIT 1", CONNECTION_ASYNC);
-    PrepareStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET, "UPDATE battlenet_accounts SET LoginTicket = ? WHERE LoginTicket = ?", CONNECTION_ASYNC);
+    // A launcher ticket is picked by the session IP. When the web container and bnetserver sit in
+    // different docker networks that IP can never match, so a single pending ticket is also accepted:
+    // with exactly one candidate there is nothing to confuse it with. Two concurrent launches make the
+    // fallback ambiguous, and both sessions then fall back to the normal web challenge instead of
+    // risking a login into somebody else's account.
+    PrepareStatement(LOGIN_SEL_BNET_LAUNCHER_TICKET, "SELECT t.LoginTicket FROM battlenet_accounts t WHERE t.LoginTicket LIKE 'NG-%' AND t.LoginTicketExpiry >= UNIX_TIMESTAMP() AND (t.last_ip = ? OR (SELECT COUNT(*) FROM battlenet_accounts c WHERE c.LoginTicket LIKE 'NG-%' AND c.LoginTicketExpiry >= UNIX_TIMESTAMP()) = 1) ORDER BY (t.last_ip = ?) DESC, t.LoginTicketExpiry DESC LIMIT 1", CONNECTION_ASYNC);
+    PrepareStatement(LOGIN_UPD_BNET_CONSUME_LAUNCHER_TICKET, "UPDATE battlenet_accounts SET LoginTicket = ? WHERE LoginTicket = ? AND LoginTicketExpiry >= UNIX_TIMESTAMP()", CONNECTION_ASYNC);
     PrepareStatement(LOGIN_SEL_BNET_ACCOUNT_INFO, "SELECT " BnetAccountInfo ", " BnetGameAccountInfo ""
         " FROM battlenet_accounts ba LEFT JOIN battlenet_account_bans bab ON ba.id = bab.id LEFT JOIN account a ON ba.id = a.battlenet_account"
         " LEFT JOIN account_banned ab ON a.id = ab.id AND ab.active = 1 LEFT JOIN account_access aa ON a.id = aa.AccountID AND aa.RealmID = -1 WHERE ba.LoginTicket = ? ORDER BY a.id", CONNECTION_ASYNC);
